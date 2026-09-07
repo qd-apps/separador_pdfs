@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Separador de Notas PDF</title>
+<script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@4.4.168/build/pdf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+<script>if(!window.pdfjsLib)document.write('<script src="https://unpkg.com/pdfjs-dist@4.4.168/build/pdf.min.js"><\/script>')</script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;font-family:Inter,Segoe UI,system-ui,sans-serif}
+body{background:#f1f5f9;color:#0f172a;min-height:100vh}
+header{background:#0f172a;color:#fff;padding:18px 24px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px}
+header h1{font-size:18px;letter-spacing:.3px}
+header p{font-size:12px;opacity:.7}
+main{max-width:1100px;margin:24px auto;padding:0 16px}
+.card{background:#fff;border-radius:14px;box-shadow:0 1px 3px rgba(0,0,0,.08);padding:18px;margin-bottom:16px;border:1px solid #e2e8f0}
+.drop{border:2px dashed #94a3b8;border-radius:12px;padding:28px;text-align:center;cursor:pointer;transition:.2s;background:#f8fafc;position:relative}
+.drop.dragover{border-color:#2563eb;background:#eff6ff}
+.drop strong{color:#2563eb}
+.drop input[type=file]{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer}
+.btn{border:0;border-radius:8px;padding:10px 16px;font-weight:600;cursor:pointer;font-size:13px;transition:.15s}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn-primary{background:#2563eb;color:#fff}
+.btn-primary:hover{background:#1d4ed8}
+.btn-secondary{background:#e2e8f0;color:#0f172a}
+.btn-secondary:hover{background:#cbd5e1}
+.btn-ghost{background:#fff;border:1px solid #e2e8f0}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.badge{background:#f1f5f9;border:1px solid #e2e8f0;border-radius:20px;padding:4px 10px;font-size:12px}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{ text-align:left;padding:10px 8px;background:#f8fafc;border-bottom:1px solid #e2e8f0;font-size:11px;letter-spacing:.5px;color:#64748b}
+td{padding:9px 8px;border-bottom:1px solid #f1f5f9;vertical-align:top}
+tr:hover td{background:#f8fafc}
+input[type=checkbox]{width:16px;height:16px;accent-color:#2563eb}
+.input{border:1px solid #e2e8f0;border-radius:6px;padding:6px 8px;font-size:12px;width:100%}
+.tag{font-size:11px;padding:2px 7px;border-radius:20px;background:#e0f2fe;color:#075985;font-weight:600}
+.progress{height:6px;background:#e2e8f0;border-radius:10px;overflow:hidden}
+.progress i{display:block;height:100%;background:#2563eb;width:0;transition:.3s}
+.small{font-size:11px;color:#64748b}
+#log{max-height:120px;overflow:auto;font-size:11px;background:#0f172a;color:#e2e8f0;padding:10px;border-radius:8px;white-space:pre-wrap}
+</style>
+</head>
+<body>
+<header>
+<div>
+<h1>Separador de Notas PDF</h1>
+<p>Separe cada página em um arquivo nomeado <b>ESTADO_REDE_BAIRRO</b> · 100% no navegador</p>
+</div>
+<span class="badge" id="stat">0 páginas prontas</span>
+</header>
+<main>
+<div class="card">
+<div id="drop" class="drop">
+<p style="pointer-events:none"><strong>Clique para selecionar</strong> ou arraste PDFs aqui</p>
+<p class="small" style="margin-top:6px;pointer-events:none">Aceita múltiplos arquivos · cada página vira um PDF separado</p>
+<input id="file" type="file" accept="application/pdf" multiple>
+</div>
+<div class="row" style="margin-top:14px;justify-content:space-between">
+<div class="row">
+<span class="badge" id="fileInfo">Nenhum arquivo</span>
+<span class="badge" id="pageInfo">0 páginas</span>
+</div>
+<div class="row">
+<select id="mode" class="input" style="width:auto">
+<option value="zip">Baixar selecionados em ZIP</option>
+<option value="individual">Baixar selecionados individual</option>
+</select>
+<button id="btnDownload" class="btn btn-primary" disabled>Baixar selecionados</button>
+<button id="btnAll" class="btn btn-secondary" disabled>Baixar tudo (ZIP)</button>
+<button id="btnClear" class="btn btn-ghost">Limpar</button>
+</div>
+</div>
+<div class="progress" style="margin-top:12px"><i id="bar"></i></div>
+<div class="small" id="hint" style="margin-top:8px">Exemplo: <code>RN_Nordestao_LagoaNova.pdf</code> · Rede mapeada: Nordestao, Atacadao, Sendas, Wms · Duplicatas ganham sufixo _2, _3</div>
+</div>
+
+<div class="card" style="padding:0;overflow:hidden">
+<div class="row" style="padding:12px 14px;justify-content:space-between;border-bottom:1px solid #e2e8f0;background:#f8fafc">
+<label class="row" style="gap:8px;cursor:pointer"><input type="checkbox" id="checkAll"> <span style="font-size:13px;font-weight:600">Selecionar todos</span></label>
+<div class="row">
+<input id="search" class="input" placeholder="Filtrar por nome, bairro, UF..." style="width:220px">
+<span class="small" id="selCount">0 selecionados</span>
+</div>
+</div>
+<div style="overflow:auto;max-height:55vh">
+<table>
+<thead><tr><th style="width:36px"></th><th>#</th><th>Arquivo origem</th><th>UF</th><th>Rede</th><th>Bairro</th><th>Nome final</th></tr></thead>
+<tbody id="tbody"><tr><td colspan="7" style="text-align:center;padding:28px;color:#94a3b8">Nenhuma página carregada</td></tr></tbody>
+</table>
+</div>
+</div>
+
+<div class="card">
+<strong style="font-size:12px;letter-spacing:.4px;color:#334155">LOG</strong>
+<div id="log" style="margin-top:8px">Aguardando PDFs...</div>
+</div>
+</main>
+
+<script>
+try{pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdn.jsdelivr.net/npm/pdfjs-dist@4.4.168/build/pdf.worker.min.js";}catch(e){console.warn("worker src fail",e)}
+
+const $=s=>document.getElementById(s);
+const els={drop:$('drop'),file:$('file'),tbody:$('tbody'),bar:$('bar'),log:$('log'),checkAll:$('checkAll'),search:$('search'),selCount:$('selCount'),stat:$('stat'),fileInfo:$('fileInfo'),pageInfo:$('pageInfo'),btnDownload:$('btnDownload'),btnAll:$('btnAll'),btnClear:$('btnClear'),mode:$('mode'),hint:$('hint')};
+
+let items=[]; // {id, srcName, srcBytes, pageIdx, totalPages, uf, rede, bairro, cidade, emitente, filename, base, checked}
+let fileCounter=0;
+
+function log(m){ els.log.textContent+= (els.log.textContent?"\n":"")+m; els.log.scrollTop=els.log.scrollHeight; }
+function setBar(p){ els.bar.style.width=p+"%"; }
+function sanitizeBairro(raw){
+  let s=raw.normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim();
+  s=s.replace(/[^a-zA-Z0-9\s]/g,' ').replace(/\s+/g,' ').trim();
+  if(!s) return "SemBairro";
+  return s.split(' ').map(w=>{
+    if(w.toUpperCase()==="DE"||w.toUpperCase()==="DO"||w.toUpperCase()==="DA"||w.toUpperCase()==="DOS"||w.toUpperCase()==="DAS"||w.toUpperCase()==="E") return w.toLowerCase();
+    return w.charAt(0).toUpperCase()+w.slice(1).toLowerCase();
+  }).join('').replace(/^./,c=>c.toUpperCase());
+}
+function sanitizeRede(r){ return r.normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-zA-Z0-9]/g,''); }
+function mapRede(text){
+  const t=text.toUpperCase();
+  if(t.includes("ATACADAO")) return "Atacadao";
+  if(t.includes("WMS")) return "Wms";
+  if(t.includes("SENDAS")) return "Sendas";
+  if(t.includes("NORDESTAO")||t.includes("NORDEST")) return "Nordestao";
+  let m=text.match(/([A-ZÀ-Ú][A-ZÀ-Ú\s\.\/\-&]{4,}?)(LTDA|S\.A\.|S\/A)/i);
+  if(m){
+    let cand=m[1].trim().split(/\s+/)[0];
+    cand=cand.replace(/[^A-Za-zÀ-ú]/g,'');
+    if(cand.length>=3) return cand.charAt(0).toUpperCase()+cand.slice(1).toLowerCase();
+  }
+  return "SemRede";
+}
+function extractInfo(raw){
+  const txt=raw.replace(/\s+/g,' ').replace(/\n/g,' ');
+  const norm=raw.replace(/\n/g,' ').replace(/\s+/g,' ');
+  let uf="SEM_UF", bairro="SemBairro", cidade="", emitente="";
+  let mB=norm.match(/Bairro\s+([^,]+),\s*([^,]+),\s*([A-Z]{2})\b/i);
+  if(!mB){
+    const alt=norm.match(/Bairro\s+([A-Za-zÀ-ú0-9\s\.\-]+?)\s*,\s*([A-Za-zÀ-ú\s]+?)\s*,\s*([A-Z]{2})\b/);
+    if(alt) mB=alt;
+  }
+  if(mB){
+    bairro=mB[1].trim();
+    cidade=mB[2].trim();
+    uf=mB[3].trim().toUpperCase();
+  } else {
+    let m2=raw.match(/Bairro\s+([^\n,]+),([^\n,]+),\s*([A-Z]{2})/);
+    if(m2){ bairro=m2[1].trim(); cidade=m2[2].trim(); uf=m2[3].trim().toUpperCase(); }
+  }
+  emitente=mapRede(raw);
+  const bairroSan=sanitizeBairro(bairro);
+  const redeSan=sanitizeRede(emitente);
+  return {uf, bairro: bairroSan, bairroRaw:bairro, cidade, rede:redeSan, emitente};
+}
+
+function dedupFilenames(){
+  const counts={};
+  items.forEach(it=>{
+    const base=`${it.uf}_${it.rede}_${it.bairro}`;
+    it.base=base;
+    const c=(counts[base]||0)+1;
+    counts[base]=c;
+    it.filename= c===1 ? base+".pdf" : `${base}_${c}.pdf`;
+  });
+}
+
+function render(){
+  const q=els.search.value.toLowerCase();
+  const filtered=items.filter(it=> !q || `${it.filename} ${it.bairro} ${it.uf} ${it.rede} ${it.srcName}`.toLowerCase().includes(q));
+  if(!items.length){
+    els.tbody.innerHTML=`<tr><td colspan="7" style="text-align:center;padding:28px;color:#94a3b8">Nenhuma página carregada</td></tr>`;
+  } else if(!filtered.length){
+    els.tbody.innerHTML=`<tr><td colspan="7" style="text-align:center;padding:18px;color:#94a3b8">Nenhum resultado para filtro</td></tr>`;
+  } else {
+    els.tbody.innerHTML=filtered.map(it=>`
+      <tr>
+        <td><input type="checkbox" data-id="${it.id}" ${it.checked?"checked":""}></td>
+        <td><span class="tag">${it.pageIdx+1}/${it.totalPages}</span></td>
+        <td title="${it.srcName}" style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${it.srcName}</td>
+        <td><b>${it.uf}</b></td>
+        <td>${it.rede}</td>
+        <td title="${it.bairroRaw}">${it.bairro}</td>
+        <td><input class="input" data-edit="${it.id}" value="${it.filename}" style="font-family:monospace"></td>
+      </tr>`).join('');
+  }
+  const sel=items.filter(i=>i.checked).length;
+  els.selCount.textContent=sel+" selecionados";
+  els.stat.textContent=items.length+" páginas prontas";
+  els.fileInfo.textContent= [...new Set(items.map(i=>i.srcName))].length + " arquivo(s)";
+  els.pageInfo.textContent= items.length+" páginas";
+  els.btnDownload.disabled=sel===0;
+  els.btnAll.disabled=items.length===0;
+  const anyDup=items.length!==new Set(items.map(i=>i.filename)).size;
+  els.hint.textContent= anyDup ? "Duplicatas detectadas -> sufixo _2, _3 aplicado. Você pode editar o nome na tabela." : "Exemplo: RN_Nordestao_LagoaNova.pdf · Duplicatas ganham sufixo _2, _3";
+}
+
+async function processFile(file){
+  const buf=await file.arrayBuffer();
+  if(!buf.byteLength) throw new Error("Arquivo vazio");
+  const bytes=new Uint8Array(buf);
+  let doc;
+  try{ doc=await pdfjsLib.getDocument({data:bytes}).promise; }catch(e){ throw new Error("pdf.js falhou: "+e.message+" (verifique conexão CDN)"); }
+  log(`📄 ${file.name} — ${doc.numPages} página(s)`);
+  for(let p=1;p<=doc.numPages;p++){
+    const page=await doc.getPage(p);
+    const tc=await page.getTextContent();
+    const text=tc.items.map(i=>i.str).join(' ');
+    const withBreaks=tc.items.map(i=>i.str).join('\n');
+    const info=extractInfo(text+" "+withBreaks);
+    const id=fileCounter++ + "_" + p;
+    items.push({id, srcName:file.name, srcBytes:bytes, pageIdx:p-1, totalPages:doc.numPages, uf:info.uf, rede:info.rede, bairro:info.bairro, bairroRaw:info.bairroRaw, cidade:info.cidade, emitente:info.emitente, filename:"", base:"", checked:true});
+    setBar(Math.round((p/doc.numPages)*100));
+  }
+  dedupFilenames();
+  render();
+}
+
+async function handleFiles(list){
+  if(!list.length) return;
+  els.log.textContent="";
+  log("Iniciando leitura...");
+  setBar(5);
+  for(const f of list){
+    if(f.type!=="application/pdf" && !f.name.toLowerCase().endsWith(".pdf")){ log("⚠ Ignorado (não é PDF): "+f.name); continue; }
+    try{ await processFile(f); } catch(e){ log("❌ Erro em "+f.name+": "+e.message); console.error(e); }
+  }
+  setBar(100);
+  setTimeout(()=>setBar(0),800);
+  if(items.length) log(`✅ Pronto: ${items.length} página(s) de ${new Set(items.map(i=>i.srcName)).size} arquivo(s)`);
+}
+
+["dragover","drop","dragenter"].forEach(ev=>{
+  window.addEventListener(ev,e=>{e.preventDefault();e.stopPropagation();});
+  document.addEventListener(ev,e=>{e.preventDefault();e.stopPropagation();});
+});
+els.file.addEventListener('click',e=>{e.stopPropagation();});
+els.file.addEventListener('change',e=>{handleFiles([...e.target.files]);e.target.value="";});
+els.drop.addEventListener('dragenter',e=>{e.preventDefault();e.stopPropagation();els.drop.classList.add('dragover');if(e.dataTransfer) e.dataTransfer.dropEffect='copy';});
+els.drop.addEventListener('dragover',e=>{e.preventDefault();e.stopPropagation();els.drop.classList.add('dragover');if(e.dataTransfer) e.dataTransfer.dropEffect='copy';});
+els.drop.addEventListener('dragleave',e=>{e.preventDefault();e.stopPropagation();if(!els.drop.contains(e.relatedTarget)) els.drop.classList.remove('dragover');});
+els.drop.addEventListener('drop',e=>{e.preventDefault();e.stopPropagation();els.drop.classList.remove('dragover');const files=[...e.dataTransfer.files].filter(f=>f.type==="application/pdf"||f.name.toLowerCase().endsWith(".pdf"));if(files.length) handleFiles(files);else if(e.dataTransfer.files.length) log("⚠ Nenhum PDF detectado no arraste");});
+els.checkAll.addEventListener('change',e=>{ items.forEach(i=>i.checked=e.target.checked); render(); });
+els.search.addEventListener('input',render);
+els.tbody.addEventListener('change',e=>{
+  if(e.target.dataset.id!==undefined){ const it=items.find(x=>x.id===e.target.dataset.id); if(it) it.checked=e.target.checked; render(); }
+});
+els.tbody.addEventListener('input',e=>{
+  if(e.target.dataset.edit!==undefined){ const it=items.find(x=>x.id===e.target.dataset.edit); if(it) it.filename=e.target.value.trim()||it.filename; }
+});
+els.btnClear.addEventListener('click',()=>{ items=[]; fileCounter=0; els.log.textContent="Aguardando PDFs..."; els.file.value=""; els.search.value=""; setBar(0); render(); });
+
+function getSelected(){ return items.filter(i=>i.checked); }
+
+async function buildPdfBytes(srcBytes, pageIdx){
+  const srcDoc=await PDFLib.PDFDocument.load(srcBytes);
+  const out=await PDFLib.PDFDocument.create();
+  const [copied]=await out.copyPages(srcDoc,[pageIdx]);
+  out.addPage(copied);
+  return await out.save();
+}
+function downloadBlob(blob, name){
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a'); a.href=url; a.download=name; document.body.appendChild(a); a.click(); setTimeout(()=>{URL.revokeObjectURL(url); a.remove();},500);
+}
+
+els.btnDownload.addEventListener('click', async()=>{
+  const sel=getSelected();
+  if(!sel.length) return;
+  els.btnDownload.disabled=true; els.btnDownload.textContent="Gerando...";
+  try{
+    if(els.mode.value==="individual"){
+      for(const it of sel){
+        const bytes=await buildPdfBytes(it.srcBytes, it.pageIdx);
+        downloadBlob(new Blob([bytes],{type:"application/pdf"}), it.filename);
+        await new Promise(r=>setTimeout(r,220));
+      }
+      log(`⬇ ${sel.length} arquivo(s) baixado(s) individualmente`);
+    } else {
+      const zip=new JSZip();
+      for(const it of sel){
+        const bytes=await buildPdfBytes(it.srcBytes, it.pageIdx);
+        zip.file(it.filename, bytes);
+      }
+      const blob=await zip.generateAsync({type:"blob"});
+      downloadBlob(blob, `notas_${new Date().toISOString().slice(0,10)}.zip`);
+      log(`⬇ ZIP com ${sel.length} arquivo(s) gerado`);
+    }
+  } catch(e){ log("❌ Erro ao gerar: "+e.message); console.error(e); }
+  els.btnDownload.disabled=false; els.btnDownload.textContent="Baixar selecionados";
+});
+
+els.btnAll.addEventListener('click', async()=>{
+  if(!items.length) return;
+  els.btnAll.disabled=true; els.btnAll.textContent="Gerando ZIP...";
+  try{
+    const zip=new JSZip();
+    for(const it of items){
+      const bytes=await buildPdfBytes(it.srcBytes, it.pageIdx);
+      zip.file(it.filename, bytes);
+    }
+    const blob=await zip.generateAsync({type:"blob"});
+    downloadBlob(blob, `todas_notas_${new Date().toISOString().slice(0,10)}.zip`);
+    log(`⬇ ZIP total com ${items.length} arquivo(s)`);
+  } catch(e){ log("❌ Erro ZIP total: "+e.message);}
+  els.btnAll.disabled=false; els.btnAll.textContent="Baixar tudo (ZIP)";
+});
+render();
+</script>
+</body>
+</html>

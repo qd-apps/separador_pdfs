@@ -244,9 +244,10 @@ async function processFile(file){
   if(!window.pdfjsLib) throw new Error("pdf.js não carregado — recarregue (libs/pdf.min.js faltando)");
   const buf=await file.arrayBuffer();
   if(!buf.byteLength) throw new Error("Arquivo vazio");
-  const bytes=new Uint8Array(buf);
+  const bytesForStorage=new Uint8Array(buf.slice(0));
+  const bytesForPdfJs=new Uint8Array(buf.slice(0));
   let doc;
-  try{ doc=await pdfjsLib.getDocument({data:bytes}).promise; }catch(e){ throw new Error("pdf.js falhou: "+e.message); }
+  try{ doc=await pdfjsLib.getDocument({data:bytesForPdfJs}).promise; }catch(e){ throw new Error("pdf.js falhou: "+e.message); }
   log(`📄 ${file.name} — ${doc.numPages} página(s)`);
   for(let p=1;p<=doc.numPages;p++){
     const page=await doc.getPage(p);
@@ -255,7 +256,7 @@ async function processFile(file){
     const withBreaks=tc.items.map(i=>i.str).join('\n');
     const info=extractInfo(text+" "+withBreaks);
     const id=fileCounter++ + "_" + p;
-    items.push({id, srcName:file.name, srcBytes:bytes, pageIdx:p-1, totalPages:doc.numPages, uf:info.uf, rede:info.rede, bairro:info.bairro, bairroRaw:info.bairroRaw, cidade:info.cidade, filename:"", base:"", checked:true});
+    items.push({id, srcName:file.name, srcBytes:bytesForStorage.slice(), pageIdx:p-1, totalPages:doc.numPages, uf:info.uf, rede:info.rede, bairro:info.bairro, bairroRaw:info.bairroRaw, cidade:info.cidade, filename:"", base:"", checked:true});
     setBar(Math.round((p/doc.numPages)*100));
   }
   dedupFilenames();
@@ -298,8 +299,11 @@ function checkLibs(){
 }
 async function buildPdfBytes(srcBytes, pageIdx){
   if(!window.PDFLib) throw new Error("PDFLib não carregado");
+  if(!srcBytes || srcBytes.length<10) throw new Error("PDF vazio/corrompido (srcBytes len="+ (srcBytes?srcBytes.length:0) +")");
+  const head=String.fromCharCode(...srcBytes.slice(0,4));
+  if(head!=="%PDF") throw new Error("Header inválido '"+head+"' — buffer corrompido");
   try{
-    const srcDoc=await PDFLib.PDFDocument.load(srcBytes, {ignoreEncryption:true});
+    const srcDoc=await PDFLib.PDFDocument.load(srcBytes.slice(), {ignoreEncryption:true, updateMetadata:false});
     const out=await PDFLib.PDFDocument.create();
     const [copied]=await out.copyPages(srcDoc,[pageIdx]);
     out.addPage(copied);

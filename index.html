@@ -291,61 +291,138 @@ els.tbody.addEventListener('input',e=>{ if(e.target.dataset.edit!==undefined){ c
 els.btnClear.addEventListener('click',()=>{ items=[]; fileCounter=0; els.log.textContent="Aguardando PDFs..."; els.file.value=""; els.search.value=""; setBar(0); render(); });
 
 function getSelected(){ return items.filter(i=>i.checked); }
+function checkLibs(){
+  if(!window.PDFLib){ log("❌ PDFLib não carregado — verifique libs/pdf-lib.min.js (404?). Recarregue."); console.error("PDFLib undefined", typeof PDFLib); return false; }
+  if(!window.JSZip){ log("❌ JSZip não carregado — verifique libs/jszip.min.js"); console.error("JSZip undefined"); return false; }
+  return true;
+}
 async function buildPdfBytes(srcBytes, pageIdx){
-  const srcDoc=await PDFLib.PDFDocument.load(srcBytes);
-  const out=await PDFLib.PDFDocument.create();
-  const [copied]=await out.copyPages(srcDoc,[pageIdx]);
-  out.addPage(copied);
-  return await out.save();
+  if(!window.PDFLib) throw new Error("PDFLib não carregado");
+  try{
+    const srcDoc=await PDFLib.PDFDocument.load(srcBytes, {ignoreEncryption:true});
+    const out=await PDFLib.PDFDocument.create();
+    const [copied]=await out.copyPages(srcDoc,[pageIdx]);
+    out.addPage(copied);
+    return await out.save();
+  }catch(e){
+    console.error("buildPdfBytes falhou page",pageIdx,e);
+    throw new Error("Falha ao recortar página "+(pageIdx+1)+": "+e.message);
+  }
 }
 function downloadBlob(blob, name){
-  const url=URL.createObjectURL(blob);
-  const a=document.createElement('a'); a.href=url; a.download=name; document.body.appendChild(a); a.click(); setTimeout(()=>{URL.revokeObjectURL(url); a.remove();},600);
+  try{
+    if(!blob || blob.size===0) throw new Error("Blob vazio");
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.style.display='none';
+    a.href=url; a.download=name;
+    document.body.appendChild(a);
+    a.click();
+    const evt=new MouseEvent('click',{bubbles:true,cancelable:true,view:window});
+    a.dispatchEvent(evt);
+    log(`⬇ Iniciando download: ${name} (${(blob.size/1024).toFixed(1)} KB)`);
+    setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); }, 2000);
+  }catch(e){
+    log("❌ Erro downloadBlob "+name+": "+e.message);
+    console.error(e);
+  }
 }
 async function downloadByUF(uf){
+  if(!checkLibs()) return;
   const list=items.filter(i=>i.uf===uf);
   if(!list.length) return;
+  const btn=[...els.groups.querySelectorAll("[data-uf]")].find(b=>b.dataset.uf===uf);
+  if(btn){ btn.disabled=true; btn.textContent="Gerando..."; }
   log(`⏳ Gerando ZIP ${uf} com ${list.length} arquivos...`);
-  const zip=new JSZip();
-  for(const it of list){
-    const bytes=await buildPdfBytes(it.srcBytes, it.pageIdx);
-    zip.file(it.filename, bytes);
-  }
-  const blob=await zip.generateAsync({type:"blob"});
-  downloadBlob(blob, `${uf}_${new Date().toISOString().slice(0,10)}.zip`);
-  log(`⬇ ZIP ${uf} (${list.length} arquivos) pronto`);
+  setBar(10);
+  try{
+    const zip=new JSZip();
+    let ok=0, fail=0;
+    for(let i=0;i<list.length;i++){
+      const it=list[i];
+      try{
+        const bytes=await buildPdfBytes(it.srcBytes, it.pageIdx);
+        zip.file(it.filename, bytes);
+        ok++;
+      }catch(e){ fail++; log(`❌ ${it.filename}: ${e.message}`); }
+      setBar(10+Math.round(80*i/list.length));
+    }
+    if(ok===0) throw new Error("Nenhuma página gerada");
+    const blob=await zip.generateAsync({type:"blob"}, m=>{ if(m.percent) setBar(Math.round(m.percent)); });
+    downloadBlob(blob, `${uf}_${new Date().toISOString().slice(0,10)}.zip`);
+    log(`✅ ZIP ${uf} pronto: ${ok} ok, ${fail} falha(s)`);
+  }catch(e){ log(`❌ Erro ZIP ${uf}: ${e.message}`); console.error(e); }
+  finally{ if(btn){btn.disabled=false; btn.textContent="⬇ ZIP";} setBar(100); setTimeout(()=>setBar(0),800); }
 }
 els.btnDownload.addEventListener('click', async()=>{
+  if(!checkLibs()) return;
   const sel=getSelected(); if(!sel.length) return;
   els.btnDownload.disabled=true; els.btnDownload.textContent="Gerando...";
+  log(`⏳ Gerando ${els.mode.value==="individual"?"individualmente":"ZIP"}: ${sel.length} arquivo(s)...`);
+  setBar(10);
   try{
     if(els.mode.value==="individual"){
-      for(const it of sel){ const b=await buildPdfBytes(it.srcBytes,it.pageIdx); downloadBlob(new Blob([b],{type:"application/pdf"}), it.filename); await new Promise(r=>setTimeout(r,220)); }
-      log(`⬇ ${sel.length} arquivo(s) individual`);
+      let ok=0;
+      for(let i=0;i<sel.length;i++){
+        const it=sel[i];
+        try{
+          const b=await buildPdfBytes(it.srcBytes,it.pageIdx);
+          downloadBlob(new Blob([b],{type:"application/pdf"}), it.filename);
+          ok++;
+          await new Promise(r=>setTimeout(r,350));
+        }catch(e){ log(`❌ ${it.filename}: ${e.message}`); }
+        setBar(10+Math.round(80*i/sel.length));
+      }
+      if(ok===0) throw new Error("Nenhum arquivo gerado — veja LOG");
+      log(`✅ ${ok}/${sel.length} arquivo(s) individual disparados (se bloqueado, use modo ZIP)`);
     } else {
-      const zip=new JSZip(); for(const it of sel){ const b=await buildPdfBytes(it.srcBytes,it.pageIdx); zip.file(it.filename,b); }
-      const blob=await zip.generateAsync({type:"blob"}); downloadBlob(blob, `notas_${new Date().toISOString().slice(0,10)}.zip`); log(`⬇ ZIP selecionados (${sel.length})`);
+      const zip=new JSZip();
+      for(let i=0;i<sel.length;i++){
+        const it=sel[i];
+        try{ const b=await buildPdfBytes(it.srcBytes,it.pageIdx); zip.file(it.filename,b); }catch(e){ log(`❌ ${it.filename}: ${e.message}`); }
+        setBar(10+Math.round(60*i/sel.length));
+      }
+      const blob=await zip.generateAsync({type:"blob"}, m=>{ if(m.percent) setBar(Math.round(m.percent)); });
+      downloadBlob(blob, `notas_${new Date().toISOString().slice(0,10)}.zip`); log(`✅ ZIP selecionados (${sel.length}) pronto`);
     }
-  }catch(e){ log("❌ Erro: "+e.message); }
-  els.btnDownload.disabled=false; els.btnDownload.textContent="Baixar selecionados";
+  }catch(e){ log("❌ Erro: "+e.message); console.error(e); }
+  finally{ els.btnDownload.disabled=false; els.btnDownload.textContent="Baixar selecionados"; setBar(100); setTimeout(()=>setBar(0),800); }
 });
 els.btnAll.addEventListener('click', async()=>{
+  if(!checkLibs()) return;
   if(!items.length) return; els.btnAll.disabled=true; els.btnAll.textContent="Gerando...";
-  try{ const zip=new JSZip(); for(const it of items){ const b=await buildPdfBytes(it.srcBytes,it.pageIdx); zip.file(it.filename,b); } const blob=await zip.generateAsync({type:"blob"}); downloadBlob(blob, `todas_notas_${new Date().toISOString().slice(0,10)}.zip`); log(`⬇ ZIP total ${items.length}`);}catch(e){log("❌ Erro ZIP: "+e.message);}
-  els.btnAll.disabled=false; els.btnAll.textContent="Baixar tudo (ZIP)";
+  log(`⏳ Gerando ZIP total: ${items.length} arquivos...`); setBar(10);
+  try{
+    const zip=new JSZip();
+    for(let i=0;i<items.length;i++){
+      const it=items[i];
+      try{ const b=await buildPdfBytes(it.srcBytes,it.pageIdx); zip.file(it.filename,b); }catch(e){ log(`❌ ${it.filename}: ${e.message}`); }
+      if(i%5===0) setBar(10+Math.round(60*i/items.length));
+    }
+    const blob=await zip.generateAsync({type:"blob"}, m=>{ if(m.percent) setBar(Math.round(m.percent)); });
+    downloadBlob(blob, `todas_notas_${new Date().toISOString().slice(0,10)}.zip`); log(`✅ ZIP total ${items.length} pronto`);
+  }catch(e){log("❌ Erro ZIP: "+e.message); console.error(e);}
+  finally{ els.btnAll.disabled=false; els.btnAll.textContent="Baixar tudo (ZIP)"; setBar(100); setTimeout(()=>setBar(0),800); }
 });
 els.btnAllGrouped.addEventListener('click', async()=>{
+  if(!checkLibs()) return;
   if(!items.length) return; els.btnAllGrouped.disabled=true; els.btnAllGrouped.textContent="Gerando...";
+  log(`⏳ Gerando ZIP agrupado: ${items.length} arquivos...`); setBar(10);
   try{
     const zip=new JSZip();
     const byUF={}; items.forEach(it=>{ (byUF[it.uf]=byUF[it.uf]||[]).push(it); });
+    let done=0;
     for(const uf of Object.keys(byUF).sort()){
       const folder=zip.folder(uf);
-      for(const it of byUF[uf]){ const b=await buildPdfBytes(it.srcBytes,it.pageIdx); folder.file(it.filename,b); }
+      for(const it of byUF[uf]){
+        try{ const b=await buildPdfBytes(it.srcBytes,it.pageIdx); folder.file(it.filename,b); }catch(e){ log(`❌ ${it.filename}: ${e.message}`); }
+        done++; setBar(10+Math.round(60*done/items.length));
+      }
     }
-    const blob=await zip.generateAsync({type:"blob"}); downloadBlob(blob, `notas_por_estado_${new Date().toISOString().slice(0,10)}.zip`); log(`⬇ ZIP agrupado por estado (${items.length} arquivos)`);
-  }catch(e){ log("❌ Erro agrupado: "+e.message); }
-  els.btnAllGrouped.disabled=false; els.btnAllGrouped.textContent="Baixar todos agrupados (ZIP com pastas por UF)";
+    const blob=await zip.generateAsync({type:"blob"}, m=>{ if(m.percent) setBar(Math.round(m.percent)); });
+    downloadBlob(blob, `notas_por_estado_${new Date().toISOString().slice(0,10)}.zip`); log(`✅ ZIP agrupado por estado (${items.length} arquivos) pronto`);
+  }catch(e){ log("❌ Erro agrupado: "+e.message); console.error(e); }
+  finally{ els.btnAllGrouped.disabled=false; els.btnAllGrouped.textContent="Baixar todos agrupados (ZIP com pastas por UF)"; setBar(100); setTimeout(()=>setBar(0),800); }
 });
 render();
 </script>

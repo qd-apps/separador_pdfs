@@ -3,10 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Separador de Notas PDF</title>
-<script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@4.4.168/build/pdf.min.js" onerror="this.onerror=null;this.src='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.min.js'"></script>
-<script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+<title>Separador de Notas PDF - Por Estado</title>
+<script src="./libs/pdf.min.js" onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js'"></script>
+<script src="./libs/pdf-lib.min.js" onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js'"></script>
+<script src="./libs/jszip.min.js" onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js'"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;font-family:Inter,Segoe UI,system-ui,sans-serif}
 body{background:#f1f5f9;color:#0f172a;min-height:100vh}
@@ -26,10 +26,15 @@ main{max-width:1100px;margin:24px auto;padding:0 16px}
 .btn-secondary{background:#e2e8f0;color:#0f172a}
 .btn-secondary:hover{background:#cbd5e1}
 .btn-ghost{background:#fff;border:1px solid #e2e8f0}
+.btn-uf{background:#fff;border:1px solid #e2e8f0;padding:10px 14px;border-radius:10px;cursor:pointer;display:flex;align-items:center;gap:10px;min-width:160px;justify-content:space-between}
+.btn-uf b{font-size:16px;color:#2563eb}
+.btn-uf:hover{border-color:#2563eb;background:#eff6ff}
 .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
 .badge{background:#f1f5f9;border:1px solid #e2e8f0;border-radius:20px;padding:4px 10px;font-size:12px}
+.pill{padding:3px 8px;border-radius:20px;font-size:11px;font-weight:700;color:#fff}
+.pill-RN{background:#2563eb}.pill-PE{background:#059669}.pill-PB{background:#d97706}.pill-SEM_UF{background:#64748b}
 table{width:100%;border-collapse:collapse;font-size:13px}
-th{ text-align:left;padding:10px 8px;background:#f8fafc;border-bottom:1px solid #e2e8f0;font-size:11px;letter-spacing:.5px;color:#64748b}
+th{text-align:left;padding:10px 8px;background:#f8fafc;border-bottom:1px solid #e2e8f0;font-size:11px;letter-spacing:.5px;color:#64748b}
 td{padding:9px 8px;border-bottom:1px solid #f1f5f9;vertical-align:top}
 tr:hover td{background:#f8fafc}
 input[type=checkbox]{width:16px;height:16px;accent-color:#2563eb}
@@ -39,13 +44,14 @@ input[type=checkbox]{width:16px;height:16px;accent-color:#2563eb}
 .progress i{display:block;height:100%;background:#2563eb;width:0;transition:.3s}
 .small{font-size:11px;color:#64748b}
 #log{max-height:120px;overflow:auto;font-size:11px;background:#0f172a;color:#e2e8f0;padding:10px;border-radius:8px;white-space:pre-wrap}
+#groups{display:flex;gap:10px;flex-wrap:wrap}
 </style>
 </head>
 <body>
 <header>
 <div>
 <h1>Separador de Notas PDF</h1>
-<p>Separe cada página em um arquivo nomeado <b>ESTADO_REDE_BAIRRO</b> · 100% no navegador</p>
+<p>Separe cada página em um arquivo <b>ESTADO_REDE_BAIRRO</b> · downloads agrupados por estado</p>
 </div>
 <span class="badge" id="stat">0 páginas prontas</span>
 </header>
@@ -53,7 +59,7 @@ input[type=checkbox]{width:16px;height:16px;accent-color:#2563eb}
 <div class="card">
 <div id="drop" class="drop">
 <p style="pointer-events:none"><strong>Clique para selecionar</strong> ou arraste PDFs aqui</p>
-<p class="small" style="margin-top:6px;pointer-events:none">Aceita múltiplos arquivos · cada página vira um PDF separado</p>
+<p class="small" style="margin-top:6px;pointer-events:none">Aceita múltiplos arquivos · cada página vira um PDF separado (estado lido do endereço do emitente)</p>
 <input id="file" type="file" accept="application/pdf" multiple>
 </div>
 <div class="row" style="margin-top:14px;justify-content:space-between">
@@ -72,7 +78,18 @@ input[type=checkbox]{width:16px;height:16px;accent-color:#2563eb}
 </div>
 </div>
 <div class="progress" style="margin-top:12px"><i id="bar"></i></div>
-<div class="small" id="hint" style="margin-top:8px">Exemplo: <code>RN_Nordestao_LagoaNova.pdf</code> · Rede mapeada: Nordestao, Atacadao, Sendas, Wms · Duplicatas ganham sufixo _2, _3</div>
+<div class="small" id="hint" style="margin-top:8px">Ex: <code>RN_Sendas_CapimMacio.pdf</code> · <code>PE_Wms_Arruda.pdf</code> · duplicatas ganham sufixo _2, _3</div>
+</div>
+
+<div class="card" id="groupsCard" style="display:none">
+<div class="row" style="justify-content:space-between;margin-bottom:12px">
+<strong style="font-size:13px">📂 Downloads por Estado</strong>
+<span class="small">Cada estado gera um ZIP com suas páginas</span>
+</div>
+<div id="groups"></div>
+<div class="row" style="margin-top:12px">
+<button id="btnAllGrouped" class="btn btn-primary">Baixar todos agrupados (ZIP com pastas por UF)</button>
+</div>
 </div>
 
 <div class="card" style="padding:0;overflow:hidden">
@@ -101,7 +118,10 @@ input[type=checkbox]{width:16px;height:16px;accent-color:#2563eb}
 function setupWorker(){
   try{
     if(window.pdfjsLib && pdfjsLib.GlobalWorkerOptions){
-      pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdn.jsdelivr.net/npm/pdfjs-dist@4.4.168/build/pdf.worker.min.js";
+      const local="./libs/pdf.worker.min.js";
+      const cdn="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js";
+      pdfjsLib.GlobalWorkerOptions.workerSrc=local;
+      fetch(local,{method:'HEAD'}).catch(()=>{pdfjsLib.GlobalWorkerOptions.workerSrc=cdn;});
     }
   }catch(e){ console.warn("worker src fail",e); }
 }
@@ -110,25 +130,25 @@ if(window.pdfjsLib) setupWorker(); else window.addEventListener('load', setupWor
   let tries=0;
   const id=setInterval(()=>{
     tries++;
-    if(window.pdfjsLib){ clearInterval(id); setupWorker(); }
-    else if(tries>40){ clearInterval(id); const l=document.getElementById('log'); if(l) l.textContent+="\n❌ pdf.js não carregou — CDN bloqueado. Recarregue ou verifique conexão."; console.error("pdfjsLib still undefined after 4s"); }
+    if(window.pdfjsLib){ clearInterval(id); setupWorker(); const l=document.getElementById('log'); if(l && l.textContent.includes('Aguardando')) l.textContent="Pronto — arraste o PDF agora."; }
+    else if(tries>50){ clearInterval(id); const l=document.getElementById('log'); if(l) l.textContent+="\n❌ pdf.js não carregou — verifique libs/pdf.min.js ou conexão."; }
   },100);
 })();
 
 const $=s=>document.getElementById(s);
-const els={drop:$('drop'),file:$('file'),tbody:$('tbody'),bar:$('bar'),log:$('log'),checkAll:$('checkAll'),search:$('search'),selCount:$('selCount'),stat:$('stat'),fileInfo:$('fileInfo'),pageInfo:$('pageInfo'),btnDownload:$('btnDownload'),btnAll:$('btnAll'),btnClear:$('btnClear'),mode:$('mode'),hint:$('hint')};
+const els={drop:$('drop'),file:$('file'),tbody:$('tbody'),bar:$('bar'),log:$('log'),checkAll:$('checkAll'),search:$('search'),selCount:$('selCount'),stat:$('stat'),fileInfo:$('fileInfo'),pageInfo:$('pageInfo'),btnDownload:$('btnDownload'),btnAll:$('btnAll'),btnClear:$('btnClear'),mode:$('mode'),hint:$('hint'),groups:$('groups'),groupsCard:$('groupsCard'),btnAllGrouped:$('btnAllGrouped')};
 
-let items=[]; // {id, srcName, srcBytes, pageIdx, totalPages, uf, rede, bairro, cidade, emitente, filename, base, checked}
+let items=[];
 let fileCounter=0;
 
-function log(m){ els.log.textContent+= (els.log.textContent?"\n":"")+m; els.log.scrollTop=els.log.scrollHeight; }
+function log(m){ els.log.textContent+=(els.log.textContent?"\n":"")+m; els.log.scrollTop=els.log.scrollHeight; }
 function setBar(p){ els.bar.style.width=p+"%"; }
 function sanitizeBairro(raw){
   let s=raw.normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim();
   s=s.replace(/[^a-zA-Z0-9\s]/g,' ').replace(/\s+/g,' ').trim();
   if(!s) return "SemBairro";
   return s.split(' ').map(w=>{
-    if(w.toUpperCase()==="DE"||w.toUpperCase()==="DO"||w.toUpperCase()==="DA"||w.toUpperCase()==="DOS"||w.toUpperCase()==="DAS"||w.toUpperCase()==="E") return w.toLowerCase();
+    if(["DE","DO","DA","DOS","DAS","E"].includes(w.toUpperCase())) return w.toLowerCase();
     return w.charAt(0).toUpperCase()+w.slice(1).toLowerCase();
   }).join('').replace(/^./,c=>c.toUpperCase());
 }
@@ -148,9 +168,8 @@ function mapRede(text){
   return "SemRede";
 }
 function extractInfo(raw){
-  const txt=raw.replace(/\s+/g,' ').replace(/\n/g,' ');
   const norm=raw.replace(/\n/g,' ').replace(/\s+/g,' ');
-  let uf="SEM_UF", bairro="SemBairro", cidade="", emitente="";
+  let uf="SEM_UF", bairro="SemBairro", cidade="";
   let mB=norm.match(/Bairro\s+([^,]+),\s*([^,]+),\s*([A-Z]{2})\b/i);
   if(!mB){
     const alt=norm.match(/Bairro\s+([A-Za-zÀ-ú0-9\s\.\-]+?)\s*,\s*([A-Za-zÀ-ú\s]+?)\s*,\s*([A-Z]{2})\b/);
@@ -164,12 +183,9 @@ function extractInfo(raw){
     let m2=raw.match(/Bairro\s+([^\n,]+),([^\n,]+),\s*([A-Z]{2})/);
     if(m2){ bairro=m2[1].trim(); cidade=m2[2].trim(); uf=m2[3].trim().toUpperCase(); }
   }
-  emitente=mapRede(raw);
-  const bairroSan=sanitizeBairro(bairro);
-  const redeSan=sanitizeRede(emitente);
-  return {uf, bairro: bairroSan, bairroRaw:bairro, cidade, rede:redeSan, emitente};
+  const rede=mapRede(raw);
+  return {uf, bairro: sanitizeBairro(bairro), bairroRaw:bairro, cidade, rede: sanitizeRede(rede)};
 }
-
 function dedupFilenames(){
   const counts={};
   items.forEach(it=>{
@@ -180,21 +196,33 @@ function dedupFilenames(){
     it.filename= c===1 ? base+".pdf" : `${base}_${c}.pdf`;
   });
 }
-
+function renderGroups(){
+  if(!items.length){ els.groupsCard.style.display="none"; return; }
+  const byUF={};
+  items.forEach(it=>{ (byUF[it.uf]=byUF[it.uf]||[]).push(it); });
+  const ufs=Object.keys(byUF).sort();
+  els.groupsCard.style.display="block";
+  els.groups.innerHTML=ufs.map(uf=>{
+    const arr=byUF[uf];
+    const redes=[...new Set(arr.map(a=>a.rede))].join(", ");
+    return `<button class="btn-uf" data-uf="${uf}"><span><b>${uf}</b> <span class="pill pill-${uf}">${arr.length}</span><br><span class=\"small\">${redes}</span></span><span>⬇ ZIP</span></button>`;
+  }).join('');
+  els.groups.querySelectorAll("[data-uf]").forEach(b=> b.addEventListener('click',()=> downloadByUF(b.dataset.uf)));
+}
 function render(){
   const q=els.search.value.toLowerCase();
   const filtered=items.filter(it=> !q || `${it.filename} ${it.bairro} ${it.uf} ${it.rede} ${it.srcName}`.toLowerCase().includes(q));
   if(!items.length){
     els.tbody.innerHTML=`<tr><td colspan="7" style="text-align:center;padding:28px;color:#94a3b8">Nenhuma página carregada</td></tr>`;
   } else if(!filtered.length){
-    els.tbody.innerHTML=`<tr><td colspan="7" style="text-align:center;padding:18px;color:#94a3b8">Nenhum resultado para filtro</td></tr>`;
+    els.tbody.innerHTML=`<tr><td colspan="7" style="text-align:center;padding:18px;color:#94a3b8">Nenhum resultado</td></tr>`;
   } else {
     els.tbody.innerHTML=filtered.map(it=>`
       <tr>
         <td><input type="checkbox" data-id="${it.id}" ${it.checked?"checked":""}></td>
         <td><span class="tag">${it.pageIdx+1}/${it.totalPages}</span></td>
         <td title="${it.srcName}" style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${it.srcName}</td>
-        <td><b>${it.uf}</b></td>
+        <td><span class="pill pill-${it.uf}">${it.uf}</span></td>
         <td>${it.rede}</td>
         <td title="${it.bairroRaw}">${it.bairro}</td>
         <td><input class="input" data-edit="${it.id}" value="${it.filename}" style="font-family:monospace"></td>
@@ -207,12 +235,13 @@ function render(){
   els.pageInfo.textContent= items.length+" páginas";
   els.btnDownload.disabled=sel===0;
   els.btnAll.disabled=items.length===0;
+  els.btnAllGrouped.disabled=items.length===0;
   const anyDup=items.length!==new Set(items.map(i=>i.filename)).size;
-  els.hint.textContent= anyDup ? "Duplicatas detectadas -> sufixo _2, _3 aplicado. Você pode editar o nome na tabela." : "Exemplo: RN_Nordestao_LagoaNova.pdf · Duplicatas ganham sufixo _2, _3";
+  els.hint.textContent= anyDup ? "Duplicatas -> sufixo _2, _3. Edite o nome na tabela." : "Ex: RN_Sendas_CapimMacio.pdf · PE_Wms_Arruda.pdf";
+  renderGroups();
 }
-
 async function processFile(file){
-  if(!window.pdfjsLib) throw new Error("pdf.js não carregado — recarregue a página (CDN bloqueado)");
+  if(!window.pdfjsLib) throw new Error("pdf.js não carregado — recarregue (libs/pdf.min.js faltando)");
   const buf=await file.arrayBuffer();
   if(!buf.byteLength) throw new Error("Arquivo vazio");
   const bytes=new Uint8Array(buf);
@@ -226,25 +255,23 @@ async function processFile(file){
     const withBreaks=tc.items.map(i=>i.str).join('\n');
     const info=extractInfo(text+" "+withBreaks);
     const id=fileCounter++ + "_" + p;
-    items.push({id, srcName:file.name, srcBytes:bytes, pageIdx:p-1, totalPages:doc.numPages, uf:info.uf, rede:info.rede, bairro:info.bairro, bairroRaw:info.bairroRaw, cidade:info.cidade, emitente:info.emitente, filename:"", base:"", checked:true});
+    items.push({id, srcName:file.name, srcBytes:bytes, pageIdx:p-1, totalPages:doc.numPages, uf:info.uf, rede:info.rede, bairro:info.bairro, bairroRaw:info.bairroRaw, cidade:info.cidade, filename:"", base:"", checked:true});
     setBar(Math.round((p/doc.numPages)*100));
   }
   dedupFilenames();
   render();
 }
-
 async function handleFiles(list){
   if(!list.length) return;
   els.log.textContent="";
   log("Iniciando leitura...");
   setBar(5);
   for(const f of list){
-    if(f.type!=="application/pdf" && !f.name.toLowerCase().endsWith(".pdf")){ log("⚠ Ignorado (não é PDF): "+f.name); continue; }
+    if(f.type!=="application/pdf" && !f.name.toLowerCase().endsWith(".pdf")){ log("⚠ Ignorado: "+f.name); continue; }
     try{ await processFile(f); } catch(e){ log("❌ Erro em "+f.name+": "+e.message); console.error(e); }
   }
-  setBar(100);
-  setTimeout(()=>setBar(0),800);
-  if(items.length) log(`✅ Pronto: ${items.length} página(s) de ${new Set(items.map(i=>i.srcName)).size} arquivo(s)`);
+  setBar(100); setTimeout(()=>setBar(0),800);
+  if(items.length) log(`✅ Pronto: ${items.length} páginas de ${new Set(items.map(i=>i.srcName)).size} arquivo(s) — use os botões por estado abaixo.`);
 }
 
 ["dragover","drop","dragenter"].forEach(ev=>{
@@ -256,19 +283,14 @@ els.file.addEventListener('change',e=>{handleFiles([...e.target.files]);e.target
 els.drop.addEventListener('dragenter',e=>{e.preventDefault();e.stopPropagation();els.drop.classList.add('dragover');if(e.dataTransfer) e.dataTransfer.dropEffect='copy';});
 els.drop.addEventListener('dragover',e=>{e.preventDefault();e.stopPropagation();els.drop.classList.add('dragover');if(e.dataTransfer) e.dataTransfer.dropEffect='copy';});
 els.drop.addEventListener('dragleave',e=>{e.preventDefault();e.stopPropagation();if(!els.drop.contains(e.relatedTarget)) els.drop.classList.remove('dragover');});
-els.drop.addEventListener('drop',e=>{e.preventDefault();e.stopPropagation();els.drop.classList.remove('dragover');const files=[...e.dataTransfer.files].filter(f=>f.type==="application/pdf"||f.name.toLowerCase().endsWith(".pdf"));if(files.length) handleFiles(files);else if(e.dataTransfer.files.length) log("⚠ Nenhum PDF detectado no arraste");});
+els.drop.addEventListener('drop',e=>{e.preventDefault();e.stopPropagation();els.drop.classList.remove('dragover');const files=[...e.dataTransfer.files].filter(f=>f.type==="application/pdf"||f.name.toLowerCase().endsWith(".pdf"));if(files.length) handleFiles(files);else if(e.dataTransfer.files.length) log("⚠ Nenhum PDF no arraste");});
 els.checkAll.addEventListener('change',e=>{ items.forEach(i=>i.checked=e.target.checked); render(); });
 els.search.addEventListener('input',render);
-els.tbody.addEventListener('change',e=>{
-  if(e.target.dataset.id!==undefined){ const it=items.find(x=>x.id===e.target.dataset.id); if(it) it.checked=e.target.checked; render(); }
-});
-els.tbody.addEventListener('input',e=>{
-  if(e.target.dataset.edit!==undefined){ const it=items.find(x=>x.id===e.target.dataset.edit); if(it) it.filename=e.target.value.trim()||it.filename; }
-});
+els.tbody.addEventListener('change',e=>{ if(e.target.dataset.id!==undefined){ const it=items.find(x=>x.id===e.target.dataset.id); if(it) it.checked=e.target.checked; render(); }});
+els.tbody.addEventListener('input',e=>{ if(e.target.dataset.edit!==undefined){ const it=items.find(x=>x.id===e.target.dataset.edit); if(it) it.filename=e.target.value.trim()||it.filename; }});
 els.btnClear.addEventListener('click',()=>{ items=[]; fileCounter=0; els.log.textContent="Aguardando PDFs..."; els.file.value=""; els.search.value=""; setBar(0); render(); });
 
 function getSelected(){ return items.filter(i=>i.checked); }
-
 async function buildPdfBytes(srcBytes, pageIdx){
   const srcDoc=await PDFLib.PDFDocument.load(srcBytes);
   const out=await PDFLib.PDFDocument.create();
@@ -278,49 +300,52 @@ async function buildPdfBytes(srcBytes, pageIdx){
 }
 function downloadBlob(blob, name){
   const url=URL.createObjectURL(blob);
-  const a=document.createElement('a'); a.href=url; a.download=name; document.body.appendChild(a); a.click(); setTimeout(()=>{URL.revokeObjectURL(url); a.remove();},500);
+  const a=document.createElement('a'); a.href=url; a.download=name; document.body.appendChild(a); a.click(); setTimeout(()=>{URL.revokeObjectURL(url); a.remove();},600);
 }
-
+async function downloadByUF(uf){
+  const list=items.filter(i=>i.uf===uf);
+  if(!list.length) return;
+  log(`⏳ Gerando ZIP ${uf} com ${list.length} arquivos...`);
+  const zip=new JSZip();
+  for(const it of list){
+    const bytes=await buildPdfBytes(it.srcBytes, it.pageIdx);
+    zip.file(it.filename, bytes);
+  }
+  const blob=await zip.generateAsync({type:"blob"});
+  downloadBlob(blob, `${uf}_${new Date().toISOString().slice(0,10)}.zip`);
+  log(`⬇ ZIP ${uf} (${list.length} arquivos) pronto`);
+}
 els.btnDownload.addEventListener('click', async()=>{
-  const sel=getSelected();
-  if(!sel.length) return;
+  const sel=getSelected(); if(!sel.length) return;
   els.btnDownload.disabled=true; els.btnDownload.textContent="Gerando...";
   try{
     if(els.mode.value==="individual"){
-      for(const it of sel){
-        const bytes=await buildPdfBytes(it.srcBytes, it.pageIdx);
-        downloadBlob(new Blob([bytes],{type:"application/pdf"}), it.filename);
-        await new Promise(r=>setTimeout(r,220));
-      }
-      log(`⬇ ${sel.length} arquivo(s) baixado(s) individualmente`);
+      for(const it of sel){ const b=await buildPdfBytes(it.srcBytes,it.pageIdx); downloadBlob(new Blob([b],{type:"application/pdf"}), it.filename); await new Promise(r=>setTimeout(r,220)); }
+      log(`⬇ ${sel.length} arquivo(s) individual`);
     } else {
-      const zip=new JSZip();
-      for(const it of sel){
-        const bytes=await buildPdfBytes(it.srcBytes, it.pageIdx);
-        zip.file(it.filename, bytes);
-      }
-      const blob=await zip.generateAsync({type:"blob"});
-      downloadBlob(blob, `notas_${new Date().toISOString().slice(0,10)}.zip`);
-      log(`⬇ ZIP com ${sel.length} arquivo(s) gerado`);
+      const zip=new JSZip(); for(const it of sel){ const b=await buildPdfBytes(it.srcBytes,it.pageIdx); zip.file(it.filename,b); }
+      const blob=await zip.generateAsync({type:"blob"}); downloadBlob(blob, `notas_${new Date().toISOString().slice(0,10)}.zip`); log(`⬇ ZIP selecionados (${sel.length})`);
     }
-  } catch(e){ log("❌ Erro ao gerar: "+e.message); console.error(e); }
+  }catch(e){ log("❌ Erro: "+e.message); }
   els.btnDownload.disabled=false; els.btnDownload.textContent="Baixar selecionados";
 });
-
 els.btnAll.addEventListener('click', async()=>{
-  if(!items.length) return;
-  els.btnAll.disabled=true; els.btnAll.textContent="Gerando ZIP...";
+  if(!items.length) return; els.btnAll.disabled=true; els.btnAll.textContent="Gerando...";
+  try{ const zip=new JSZip(); for(const it of items){ const b=await buildPdfBytes(it.srcBytes,it.pageIdx); zip.file(it.filename,b); } const blob=await zip.generateAsync({type:"blob"}); downloadBlob(blob, `todas_notas_${new Date().toISOString().slice(0,10)}.zip`); log(`⬇ ZIP total ${items.length}`);}catch(e){log("❌ Erro ZIP: "+e.message);}
+  els.btnAll.disabled=false; els.btnAll.textContent="Baixar tudo (ZIP)";
+});
+els.btnAllGrouped.addEventListener('click', async()=>{
+  if(!items.length) return; els.btnAllGrouped.disabled=true; els.btnAllGrouped.textContent="Gerando...";
   try{
     const zip=new JSZip();
-    for(const it of items){
-      const bytes=await buildPdfBytes(it.srcBytes, it.pageIdx);
-      zip.file(it.filename, bytes);
+    const byUF={}; items.forEach(it=>{ (byUF[it.uf]=byUF[it.uf]||[]).push(it); });
+    for(const uf of Object.keys(byUF).sort()){
+      const folder=zip.folder(uf);
+      for(const it of byUF[uf]){ const b=await buildPdfBytes(it.srcBytes,it.pageIdx); folder.file(it.filename,b); }
     }
-    const blob=await zip.generateAsync({type:"blob"});
-    downloadBlob(blob, `todas_notas_${new Date().toISOString().slice(0,10)}.zip`);
-    log(`⬇ ZIP total com ${items.length} arquivo(s)`);
-  } catch(e){ log("❌ Erro ZIP total: "+e.message);}
-  els.btnAll.disabled=false; els.btnAll.textContent="Baixar tudo (ZIP)";
+    const blob=await zip.generateAsync({type:"blob"}); downloadBlob(blob, `notas_por_estado_${new Date().toISOString().slice(0,10)}.zip`); log(`⬇ ZIP agrupado por estado (${items.length} arquivos)`);
+  }catch(e){ log("❌ Erro agrupado: "+e.message); }
+  els.btnAllGrouped.disabled=false; els.btnAllGrouped.textContent="Baixar todos agrupados (ZIP com pastas por UF)";
 });
 render();
 </script>
